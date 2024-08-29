@@ -1,0 +1,14 @@
+*.pdb
+*.ipdb
+*.log
+*.obj
+*.iobj
+*.recipe
+*.txt
+*.bin
+*.tlog
+*idb
+*ilk
+log/
+storage/
+.vs/

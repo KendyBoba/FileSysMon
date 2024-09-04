@@ -3,7 +3,7 @@
 #include <memory.h>
 #include "ConsoleProgram.h"
 #include <Windows.h>
-#define _SERVICE
+//#define _SERVICE
 static LPWSTR service_name = (wchar_t*)L"FileSysMon";
 
 int main()

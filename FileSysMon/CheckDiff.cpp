@@ -13,8 +13,8 @@ CheckDiff::~CheckDiff()
 
 void CheckDiff::init()
 {
-	SECURITY_ATTRIBUTES sa = this->makeSA();
-	shared_mutex = CreateMutex(&sa, true, shared_mutex_name.c_str());
+	this->sec_attr = makeSA();
+	shared_mutex = CreateMutex(NULL, true, shared_mutex_name.c_str());
 	if(shared_mutex == NULL)
 		throw std::runtime_error("eror mutex create");
 	this->dirs = std::make_unique<std::set<std::wstring>>();
@@ -97,20 +97,25 @@ void CheckDiff::procChange(std::shared_ptr<FileInfo> fi)
 SECURITY_ATTRIBUTES CheckDiff::makeSA() const
 {
 	SECURITY_ATTRIBUTES result{0};
-	PSID users = nullptr;
+	PSID users = nullptr, admins = nullptr;
+	SID_IDENTIFIER_AUTHORITY authAdmin = SECURITY_NT_AUTHORITY;
 	SID_IDENTIFIER_AUTHORITY authWorld = SECURITY_WORLD_SID_AUTHORITY;
-	if (!AllocateAndInitializeSid(&authWorld,1,SECURITY_WORLD_RID,0,0,0,0,0,0,0,&users))
+	if (!AllocateAndInitializeSid(&authAdmin,2,SECURITY_BUILTIN_DOMAIN_RID,DOMAIN_ALIAS_RID_ADMINS,0,0,0,0,0,0,&admins))
 		throw std::runtime_error("Attribute creation error (sid)");
-	EXPLICIT_ACCESS ea[1];
+	if (!AllocateAndInitializeSid(&authWorld, 1, SECURITY_WORLD_RID,0, 0, 0, 0, 0, 0, 0, &users))
+		throw std::runtime_error("Attribute creation error (sid)");
+	EXPLICIT_ACCESS ea[2];
 	ZeroMemory(&ea, sizeof(ea));
 	ea[0].grfAccessMode = SET_ACCESS;
 	ea[0].grfAccessPermissions = KEY_ALL_ACCESS;
-	ea[0].grfInheritance = NO_INHERITANCE;
+	ea[0].grfInheritance = INHERIT_ONLY;
 	ea[0].Trustee.TrusteeForm = TRUSTEE_IS_SID;
 	ea[0].Trustee.TrusteeType = TRUSTEE_IS_GROUP;
 	ea[0].Trustee.ptstrName = (LPWCH)users;
+	ea[1] = ea[0];
+	ea[1].Trustee.ptstrName = (LPWCH)admins;
 	PACL acl = nullptr;
-	if(SetEntriesInAcl(1, ea, nullptr, &acl) != ERROR_SUCCESS)
+	if(SetEntriesInAcl(2, ea, nullptr, &acl) != ERROR_SUCCESS)
 		throw std::runtime_error("Attribute creation error (acl)");
 	PSECURITY_DESCRIPTOR psd = (PSECURITY_DESCRIPTOR*)LocalAlloc(LPTR,SECURITY_DESCRIPTOR_MIN_LENGTH);
 	if(!psd)
@@ -173,8 +178,7 @@ void CheckDiff::writeLog(std::shared_ptr<FileInfo> fi)
 
 void CheckDiff::exec()
 {
-	SECURITY_ATTRIBUTES sec_attr = this->makeSA();
-	HANDLE share_obj = CreateFileMapping(NULL, &sec_attr, PAGE_READWRITE,0, shared_size, shared_memory_name.c_str());
+	HANDLE share_obj = CreateFileMapping(NULL, NULL, PAGE_READWRITE,0, shared_size, shared_memory_name.c_str());
 	if (share_obj == nullptr)
 		throw std::runtime_error("Failure to open shared object");
 	Message* p_msg = (Message*)MapViewOfFile(share_obj, FILE_MAP_ALL_ACCESS, 0, 0, shared_size);
@@ -203,15 +207,16 @@ void CheckDiff::exec()
 		Message msg;
 		while (global::instance().is_work) {
 			msg = read();
-			*error_log << (int)msg.command << std::endl; error_log->flush();
 			global::instance().UpdateStatus(SERVICE_RUNNING);
 			while (global::instance().is_pause) { std::this_thread::sleep_for(std::chrono::milliseconds(200)); };
 			switch (msg.command)
 			{
 			case Command::INSERT: {
 				auto pfi = make_info(fromByteArray(msg.fi.file_path));
-				if(!pfi)
+				if (!pfi) {
 					send(Command::_ERROR_BAD_ARG_, FileInfo());
+					continue;
+				}
 				this->storage_mutex.lock();
 				Storage::instance().insert(*pfi);
 				this->storage_mutex.unlock();
@@ -284,7 +289,7 @@ void CheckDiff::exec()
 				send(Command::NONE, FileInfo());
 			}; break;
 			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+			std::this_thread::sleep_for(std::chrono::milliseconds(50));
 #ifdef _DEBUG
 			this->storage_mutex.lock();
 			Storage::instance().print();

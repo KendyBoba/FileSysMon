@@ -1,18 +1,15 @@
-﻿// FileSysMonUI.cpp : Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
-//
-
-#include <iostream>
+﻿#include <iostream>
 #include <stdio.h>
 #include <memory.h>
 #include "ConsoleProgram.h"
 #include <Windows.h>
-
+#define _SERVICE
 static LPWSTR service_name = (wchar_t*)L"FileSysMon";
 
 int main()
 {
 	std::setlocale(LC_ALL, "");
-#ifndef _DEBUG
+#ifdef _SERVICE
 	int exit = 0;
 	SC_HANDLE hSc = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
 	if (!hSc) {
@@ -23,11 +20,10 @@ int main()
 	auto binary_path = boost::filesystem::current_path() += L"\\";
 	binary_path += service_name;
 	binary_path += L".exe";
-	std::wcout << binary_path.wstring() << std::endl;
 	SC_HANDLE service = CreateService(hSc,
 		service_name,
 		L"FileSysMon", SERVICE_ALL_ACCESS,
-		SERVICE_WIN32_SHARE_PROCESS,
+		SERVICE_WIN32_OWN_PROCESS,
 		SERVICE_AUTO_START,
 		SERVICE_ERROR_NORMAL,
 		binary_path.wstring().c_str(), NULL, NULL, NULL, NULL, NULL);
@@ -54,16 +50,16 @@ int main()
 	}
 	CloseServiceHandle(hSc);
 #endif
-#ifdef _DEBUG
-	std::this_thread::sleep_for(std::chrono::microseconds(1000));
-#endif
 	try {
 		ConsoleProgram prog;
 		prog.exec();
 	}
 	catch (boost::interprocess::interprocess_exception &ex) {
 		std::string e = ex.what();
-		int i = 0;
+		std::cout << e << std::endl;
+	}
+	catch (...) {
+		std::cout << "Uniknown error" << std::endl;
 	}
 	return 0;
 }

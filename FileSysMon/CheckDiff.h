@@ -26,6 +26,7 @@ private:
 	std::shared_ptr<std::fstream> error_log = nullptr;
 	std::shared_ptr<std::fstream> change_log = nullptr;
 	bool use_log = false;
+	SECURITY_ATTRIBUTES sec_attr;
 public:
 	CheckDiff();
 	~CheckDiff();

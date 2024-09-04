@@ -1,8 +1,9 @@
 #include <iostream>
 #include "CheckDiff.h"
 #include <boost/json/src.hpp>
+//#define _SERVICE
 
-#ifndef _DEBUG
+#ifdef _SERVICE
 void WINAPI serviceCtrlHandlerProc(DWORD ctrl,DWORD event_type,void* event_data,void* context) {
 	switch (ctrl)
 	{
@@ -71,7 +72,7 @@ int startService() {
 	return 0;
 }
 
-#ifndef _DEBUG
+#ifdef _SERVICE
 void WINAPI serviceMain(DWORD argc,LPWSTR argv[]) {
 	global::instance().hServiceStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
 	global::instance().hServiceStatus.dwCurrentState = SERVICE_START_PENDING;
@@ -94,7 +95,7 @@ void WINAPI serviceMain(DWORD argc,LPWSTR argv[]) {
 #endif
 
 int main() {
-#ifndef _DEBUG
+#ifdef _SERVICE
 	SERVICE_TABLE_ENTRY dispatcher_table[]{
 		{global::instance().service_name, serviceMain },
 		{ NULL,NULL }

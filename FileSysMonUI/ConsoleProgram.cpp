@@ -229,11 +229,13 @@ void ConsoleProgram::print(const std::vector<FileInfo>& vfi)
 
 ConsoleProgram::ConsoleProgram()
 {
-	shared_mutex = OpenMutex(MUTEX_ALL_ACCESS, true, shared_mutex_name.c_str());
-	if (shared_mutex == NULL)
-		throw std::runtime_error("Error mutex create");
-	WaitForSingleObject(shared_mutex,INFINITE);
-	this->share_obj = OpenFileMapping(FILE_MAP_ALL_ACCESS, false, name_of_shared_mem.c_str());
+	while ((shared_mutex = OpenMutex(MUTEX_ALL_ACCESS, true, shared_mutex_name.c_str())) == NULL) {
+		std::this_thread::sleep_for(std::chrono::microseconds(20));
+	}
+	WaitForSingleObject(shared_mutex, INFINITE);
+	while ((this->share_obj = OpenFileMapping(FILE_MAP_ALL_ACCESS, false, name_of_shared_mem.c_str())) == NULL) {
+		std::this_thread::sleep_for(std::chrono::microseconds(20));
+	}
 	if (share_obj == nullptr)
 		throw std::runtime_error("Failure to open shared object");
 	this->p_msg = (Message*)MapViewOfFile(share_obj, FILE_MAP_ALL_ACCESS, 0, 0, shared_size);

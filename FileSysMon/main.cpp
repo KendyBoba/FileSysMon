@@ -94,15 +94,20 @@ void WINAPI serviceMain(DWORD argc,LPWSTR argv[]) {
 
 #endif
 
-int main() {
+
 #ifdef _SERVICE
+int main() {
 	SERVICE_TABLE_ENTRY dispatcher_table[]{
 		{global::instance().service_name, serviceMain },
 		{ NULL,NULL }
 	};
 	StartServiceCtrlDispatcher(dispatcher_table);
 	return 0;
-#endif
+
+}
+#else
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
 	startService();
 	return 0;
 }
+#endif

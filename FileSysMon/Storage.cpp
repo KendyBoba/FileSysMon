@@ -8,6 +8,9 @@ Storage& Storage::instance()
 
 void Storage::insert(const FileInfo& fi)
 {
+	if (index_path->contains(fi.file_path)) {
+		return;
+	}
 	data->push_back(fi);
 	index_path->insert(fi.file_path, data->getLen() - 1);
 	boost::filesystem::path path = fromByteArray(fi.file_path);
@@ -38,9 +41,27 @@ void Storage::insert(const FileInfo& fi)
 
 void Storage::insert(const std::wstring& dir_path)
 {
-	auto files = this->fsGet(dir_path);
-	for (auto& el : *files) {
-		this->insert(el);
+	namespace bfs = boost::filesystem;
+	if (!bfs::is_directory(dir_path))
+		return;
+	std::stack <bfs::path> stack;
+	stack.push(dir_path);
+	while (!stack.empty()) {
+		auto p = stack.top();
+		stack.pop();
+		for (const bfs::directory_entry& entry : bfs::directory_iterator(p)) {
+			global::instance().UpdateStatus(SERVICE_RUNNING);
+			if (entry.path().filename_is_dot() || entry.path().filename_is_dot_dot())
+				continue;
+			if (entry.is_directory()) {
+				stack.push(entry.path());
+			}
+			else {
+				auto fi = make_info(entry.path().wstring());
+				if (fi)
+					this->insert(*fi);
+			}
+		}
 	}
 }
 
@@ -54,6 +75,7 @@ void Storage::remove(const std::wstring& path)
 	auto p_list = data->getTies(opt.value());
 	size_t k = 0;
 	for (const size_t& index : *p_list) {
+		global::instance().UpdateStatus(SERVICE_RUNNING);
 		data->remove(index-k);
 		this->fixIndex(*index_path, index - k);
 		++k;
@@ -66,6 +88,7 @@ std::shared_ptr<std::set<std::wstring>> Storage::getAllDir() const
 {
 	auto result = std::make_shared<std::set<std::wstring>>();
 	index_dir->run([&](auto path,auto pos)->void {
+		global::instance().UpdateStatus(SERVICE_RUNNING);
 		result->insert(fromByteArray<MAX_BYTE_PATH>(path));
 		});
 	return result;
@@ -87,6 +110,7 @@ std::shared_ptr<std::list<FileInfo>> Storage::searchByName(const std::wstring& n
 		return result;
 	auto p_list = data_name->getTies(opt.value());
 	for (const size_t& index : *p_list) {
+		global::instance().UpdateStatus(SERVICE_RUNNING);
 		result->push_back(data->get(index));
 	}
 	return result;
@@ -100,6 +124,7 @@ std::shared_ptr<std::list<FileInfo>> Storage::getHistory(const std::wstring& pat
 		return nullptr;
 	auto p_list_index = data->getTies(opt.value());
 	for (const size_t& index : *p_list_index) {
+		global::instance().UpdateStatus(SERVICE_RUNNING);
 		result->push_front(data->get(index));
 	}
 	return result;
@@ -113,6 +138,7 @@ std::shared_ptr<std::list<FileInfo>> Storage::getFilesFromDir(const std::wstring
 		return result;
 	auto indexes = data_dirs->getTies(opt.value());
 	for (const size_t& i : *indexes) {
+		global::instance().UpdateStatus(SERVICE_RUNNING);
 		auto temp = data_dirs->get(i);
 		auto opt_pos  = index_path->search(data_dirs->get(i));
 		if (!opt_pos)
@@ -127,6 +153,7 @@ std::shared_ptr<std::list<FileInfo>> Storage::getAllFiles()
 {
 	auto result = std::make_shared<std::list<FileInfo>>();
 	index_path->run([&](const byte_arr<MAX_BYTE_PATH>& key,size_t value)->void {
+		global::instance().UpdateStatus(SERVICE_RUNNING);
 		FileInfo fi = data->get(value);
 		result->push_front(fi);
 		});
@@ -138,6 +165,7 @@ void Storage::clearHistory()
 	size_t i = 0;
 	size_t k = 0;
 	data->run([&](FileInfo obj)->void {
+		global::instance().UpdateStatus(SERVICE_RUNNING);
 		if (obj.change != FileInfo::Changes::EMPTY) {
 			data->remove(i-k);
 			this->fixIndex(*index_path, i - k);
@@ -155,6 +183,7 @@ void Storage::clearHistory(const std::wstring& path)
 	auto p_list_index = data->getTies(opt.value());
 	size_t k = 0;
 	for (const size_t& index : *p_list_index) {
+		global::instance().UpdateStatus(SERVICE_RUNNING);
 		if (data->get(index).change != FileInfo::Changes::EMPTY) {
 			data->remove(index - k);
 			this->fixIndex(*index_path, index - k);
@@ -199,29 +228,6 @@ Storage::Storage()
 	this->index_name = std::make_unique<FileMap<byte_arr<MAX_BYTE_PATH>, size_t>>(p_index_name);
 }
 
-std::shared_ptr<std::list<FileInfo>> Storage::fsGet(const boost::filesystem::path& dir_path)
-{
-	namespace bfs = boost::filesystem;
-	auto result = std::make_shared< std::list<FileInfo>>();
-	if (!bfs::is_directory(dir_path))
-		return result;
-	std::stack <bfs::path> stack;
-	stack.push(dir_path);
-	while (!stack.empty()) {
-		auto p = stack.top();
-		stack.pop();
-		for (const bfs::directory_entry& entry : bfs::directory_iterator(p)) {
-			if (entry.is_directory()) {
-				stack.push(entry.path());
-			}
-			else {
-				result->push_front(*make_info(entry.path().wstring()));
-			}
-		}
-	}
-	return result;
-}
-
 void Storage::clearDir(const std::wstring& path)
 {
 	boost::filesystem::path dir_path = boost::filesystem::path(path).parent_path().wstring() + L"\\";
@@ -239,6 +245,7 @@ void Storage::clearDir(const std::wstring& path)
 		this->signalRemove(boost::filesystem::path(path).parent_path().wstring() + L"\\");
 	}
 	for (const size_t& index : *p_list_files) {
+		global::instance().UpdateStatus(SERVICE_RUNNING);
 		auto byte_path = data_dirs->get(index);
 		std::wstring str_path = fromByteArray(byte_path);
 		if (str_path == path) {
@@ -259,6 +266,7 @@ void Storage::clearName(const std::wstring& path)
 	auto p_list_name = data_name->getTies(opt_name.value());
 	size_t delete_index = p_list_name->back();
 	for (const size_t& index : *p_list_name) {
+		global::instance().UpdateStatus(SERVICE_RUNNING);
 		if (data_name->get(index) == opt_path.value()) {
 			delete_index = index;
 		}
@@ -280,6 +288,7 @@ void Storage::clearName(const std::wstring& path)
 void Storage::fixIndex(FileMap<byte_arr<MAX_BYTE_PATH>, size_t>& index,const size_t pos)
 {
 	index.run([&index,pos](byte_arr<MAX_BYTE_PATH> key, size_t val)->void {
+		global::instance().UpdateStatus(SERVICE_RUNNING);
 		if (val > pos) {
 			index.changeValue(key, val - 1);
 		}

@@ -15,11 +15,6 @@
 #include <boost/json.hpp>
 namespace json = boost::json;
 class CheckDiff {
-public:
-	enum status {
-		STOP,
-		WORK,
-	};
 private:
 	std::unique_ptr<std::set<std::wstring>> dirs = nullptr;
 	const std::string shared_memory_name = "FileSysMonShareMem";
@@ -30,10 +25,8 @@ private:
 	std::shared_ptr<std::fstream> error_log = nullptr;
 	std::shared_ptr<std::fstream> change_log = nullptr;
 	bool use_log = false;
-	bool is_work;
-	bool is_pause;
 public:
-	CheckDiff(bool& is_work, bool& is_pause);
+	CheckDiff();
 	~CheckDiff();
 	void init();
 	void readChanges(const boost::filesystem::path& path);
@@ -42,5 +35,5 @@ public:
 	void slotRemove(const std::wstring& dir_path);
 	void setLog(std::shared_ptr<std::fstream> error_log, std::shared_ptr<std::fstream> change_log);
 	void writeLog(std::shared_ptr<FileInfo> fi);
-	void exec(std::function<void(int)> call_back);
+	void exec();
 };

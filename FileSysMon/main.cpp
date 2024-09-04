@@ -2,44 +2,22 @@
 #include "CheckDiff.h"
 #include <boost/json/src.hpp>
 
-static bool is_work = true, is_pause = false;
-
 #ifndef _DEBUG
-static DWORD ACCWAIT = 2000;
-static LPWSTR service_name = (wchar_t*)L"FileSysMon";
-static SERVICE_STATUS hServiceStatus;
-static SERVICE_STATUS_HANDLE hStat;
-
-void UpdateStatus(DWORD new_state) {
-	++hServiceStatus.dwCheckPoint;
-	hServiceStatus.dwCurrentState = new_state;
-	SetServiceStatus(hStat, &hServiceStatus);
-}
-
 void WINAPI serviceCtrlHandlerProc(DWORD ctrl,DWORD event_type,void* event_data,void* context) {
 	switch (ctrl)
 	{
 	case SERVICE_CONTROL_SHUTDOWN:
-	case SERVICE_CONTROL_STOP: is_work = false;break;
-	case SERVICE_CONTROL_PAUSE: is_pause = true; break;
-	case SERVICE_CONTROL_CONTINUE: is_pause = false;break;
+	case SERVICE_CONTROL_STOP: global::instance().is_work = false;break;
+	case SERVICE_CONTROL_PAUSE: global::instance().is_pause = true; break;
+	case SERVICE_CONTROL_CONTINUE: global::instance().is_pause = false;break;
 	case SERVICE_CONTROL_INTERROGATE:; break;
 	}
-	++hServiceStatus.dwCheckPoint;
+	++global::instance().hServiceStatus.dwCheckPoint;
 }
 #endif
 
 int startService(const std::wstring& current_dir_path = L"D:") {
 	SetCurrentDirectory(current_dir_path.c_str());
-	auto call_back_status = [](int status)->void {
-#ifndef _DEBUG
-		switch (status)
-		{
-		case CheckDiff::status::STOP: UpdateStatus(SERVICE_STOP_PENDING); break;
-		case CheckDiff::status::WORK: UpdateStatus(SERVICE_RUNNING); break;
-		}
-#endif 
-	};
 	boost::filesystem::create_directory(boost::filesystem::current_path() / L"logs");
 	boost::filesystem::path error_path = boost::filesystem::current_path() / L"logs\\error.log";
 	boost::filesystem::path change_path = boost::filesystem::current_path() / L"logs\\change.log";
@@ -51,12 +29,12 @@ int startService(const std::wstring& current_dir_path = L"D:") {
 	auto change_log = std::make_shared<std::fstream>(change_path.wstring(), std::fstream::in | std::fstream::out | std::fstream::app);
 	bool use_log = error_log->is_open() && change_log->is_open();
 	try {
-		CheckDiff diff(is_work, is_pause);
+		CheckDiff diff;
 		if (use_log)
 			diff.setLog(error_log, change_log);
 		Storage::instance().signalInsert = std::bind(&CheckDiff::slotAdd, &diff, std::placeholders::_1);
 		Storage::instance().signalRemove = std::bind(&CheckDiff::slotRemove, &diff, std::placeholders::_1);
-		diff.exec(call_back_status);
+		diff.exec();
 	}
 	catch (boost::filesystem::filesystem_error& exep) {
 		std::string str_exept = exep.what();
@@ -91,22 +69,22 @@ int startService(const std::wstring& current_dir_path = L"D:") {
 
 #ifndef _DEBUG
 void WINAPI serviceMain(DWORD argc,LPWSTR argv[]) {
-	hServiceStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
-	hServiceStatus.dwCurrentState = SERVICE_START_PENDING;
-	hServiceStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN | SERVICE_ACCEPT_PAUSE_CONTINUE;
-	hServiceStatus.dwWin32ExitCode = ERROR_SERVICE_SPECIFIC_ERROR;
-	hServiceStatus.dwServiceSpecificExitCode = 0;
-	hServiceStatus.dwCheckPoint = 0;
-	hServiceStatus.dwWaitHint = ACCWAIT;
-	hStat = RegisterServiceCtrlHandlerEx(service_name, (LPHANDLER_FUNCTION_EX)serviceCtrlHandlerProc,nullptr);
-	SetServiceStatus(hStat, &hServiceStatus);
+	global::instance().hServiceStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+	global::instance().hServiceStatus.dwCurrentState = SERVICE_START_PENDING;
+	global::instance().hServiceStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN | SERVICE_ACCEPT_PAUSE_CONTINUE;
+	global::instance().hServiceStatus.dwWin32ExitCode = ERROR_SERVICE_SPECIFIC_ERROR;
+	global::instance().hServiceStatus.dwServiceSpecificExitCode = 0;
+	global::instance().hServiceStatus.dwCheckPoint = 0;
+	global::instance().hServiceStatus.dwWaitHint = global::instance().ACCWAIT;
+	global::instance().hStat = RegisterServiceCtrlHandlerEx(global::instance().service_name, (LPHANDLER_FUNCTION_EX)serviceCtrlHandlerProc,nullptr);
+	SetServiceStatus(global::instance().hStat, &global::instance().hServiceStatus);
 	if (!startService(argv[1])) {
-		UpdateStatus(SERVICE_STOPPED);
-		hServiceStatus.dwServiceSpecificExitCode = -1;
-		SetServiceStatus(hStat, &hServiceStatus);
+		global::instance().UpdateStatus(SERVICE_STOPPED);
+		global::instance().hServiceStatus.dwServiceSpecificExitCode = -1;
+		SetServiceStatus(global::instance().hStat, &global::instance().hServiceStatus);
 		return;
 	}
-	UpdateStatus(SERVICE_STOPPED);
+	global::instance().UpdateStatus(SERVICE_STOPPED);
 }
 
 #endif
@@ -114,7 +92,7 @@ void WINAPI serviceMain(DWORD argc,LPWSTR argv[]) {
 int main() {
 #ifndef _DEBUG
 	SERVICE_TABLE_ENTRY dispatcher_table[]{
-		{ service_name, serviceMain },
+		{global::instance().service_name, serviceMain },
 		{ NULL,NULL }
 	};
 	StartServiceCtrlDispatcher(dispatcher_table);

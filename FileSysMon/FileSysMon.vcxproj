@@ -153,6 +153,7 @@
   <ItemGroup>
     <ClCompile Include="CheckDiff.cpp" />
     <ClCompile Include="FileInfo.cpp" />
+    <ClCompile Include="global.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Storage.cpp" />
   </ItemGroup>
@@ -162,6 +163,7 @@
     <ClInclude Include="FileDynamicArray.h" />
     <ClInclude Include="FileInfo.h" />
     <ClInclude Include="FileMap.h" />
+    <ClInclude Include="global.h" />
     <ClInclude Include="Message.h" />
     <ClInclude Include="Storage.h" />
   </ItemGroup>

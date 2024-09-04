@@ -6,6 +6,7 @@
 #include "FileInfo.h"
 #include "FileMap.h"
 #include "FileDynamicArray.h"
+#include "global.h"
 #include <boost/filesystem.hpp>
 
 class Storage {
@@ -36,7 +37,6 @@ public:
 	bool isfileExist(const FileInfo& fi);
 private:
 	Storage();
-	std::shared_ptr<std::list<FileInfo>> fsGet(const boost::filesystem::path& dir_path);
 	void clearDir(const std::wstring& path);
 	void clearName(const std::wstring& path);
 	void fixIndex(FileMap<byte_arr<MAX_BYTE_PATH>, size_t>& index, const size_t pos);

@@ -1,9 +1,7 @@
 #include "CheckDiff.h"
 
-CheckDiff::CheckDiff(bool &is_work,bool& is_pause)
+CheckDiff::CheckDiff()
 {
-	this->is_pause = is_pause;
-	this->is_work = is_work;
 	init();
 }
 
@@ -39,8 +37,8 @@ void CheckDiff::readChanges(const boost::filesystem::path& path)
 	const unsigned short max_buf_size = 1024;
 	char buff[max_buf_size];
 	ZeroMemory(buff, max_buf_size);
-	while (dirs->count(path.wstring()) && this->is_work) {
-		while (is_pause) { std::this_thread::sleep_for(std::chrono::milliseconds(200)); };
+	while (dirs->count(path.wstring()) && global::instance().is_work) {
+		while (global::instance().is_pause) { std::this_thread::sleep_for(std::chrono::milliseconds(200)); };
 		OVERLAPPED overlaped;
 		overlaped.hEvent = CreateEvent(NULL, false, false, NULL);
 		ReadDirectoryChangesW(
@@ -142,7 +140,7 @@ void CheckDiff::writeLog(std::shared_ptr<FileInfo> fi)
 	change_log->flush();
 }
 
-void CheckDiff::exec(std::function<void(int)> call_back)
+void CheckDiff::exec()
 {
 	boost::interprocess::shared_memory_object share_obj(boost::interprocess::open_or_create, shared_memory_name.c_str(), boost::interprocess::read_write);
 	share_obj.truncate(shared_size);
@@ -168,72 +166,95 @@ void CheckDiff::exec(std::function<void(int)> call_back)
 		write(command, std::move(fi));
 	};
 	try {
-		while (is_work) {
-			while (is_pause) { std::this_thread::sleep_for(std::chrono::milliseconds(200)); };
+		while (global::instance().is_work) {
+			global::instance().UpdateStatus(SERVICE_RUNNING);
+			while (global::instance().is_pause) { std::this_thread::sleep_for(std::chrono::milliseconds(200)); };
 			switch (p_msg->command)
 			{
 			case Command::INSERT: {
-				Storage::instance().insert(*make_info(fromByteArray(p_msg->fi.file_path)));
+				auto pfi = make_info(fromByteArray(p_msg->fi.file_path));
+				if(!pfi)
+					send(Command::_ERROR_BAD_ARG_, FileInfo());
+				this->storage_mutex.lock();
+				Storage::instance().insert(*pfi);
+				this->storage_mutex.unlock();
 				send(Command::NONE, FileInfo());
 			}; break;
 			case Command::INSERTDIR: {
+				this->storage_mutex.lock();
 				Storage::instance().insert(fromByteArray(p_msg->fi.file_path));
+				this->storage_mutex.unlock();
 				send(Command::NONE, FileInfo());
 			}; break;
 			case Command::REMOVE: {
+				this->storage_mutex.lock();
 				Storage::instance().remove(fromByteArray(p_msg->fi.file_path));
+				this->storage_mutex.unlock();
 				send(Command::NONE, FileInfo());
 			}; break;
 			case Command::HISTORY: {
+				this->storage_mutex.lock();
 				auto list_of_history = Storage::instance().getHistory(fromByteArray<MAX_BYTE_PATH>(p_msg->fi.file_path));
+				this->storage_mutex.unlock();
 				for (auto& el : *list_of_history) {
 					send(Command::CONTINUE, std::move(el));
 				}
 				send(Command::NONE, FileInfo());
 			}; break;
 			case Command::SEARCH: {
+				this->storage_mutex.lock();
 				auto pFi = Storage::instance().searchByPath(fromByteArray(p_msg->fi.file_path));
+				this->storage_mutex.unlock();
 				if (pFi)
 					send(Command::NONE, std::move(*pFi));
 				else
 					send(Command::NONE, FileInfo());
 			}; break;
 			case Command::CLEARHISTORY: {
+				this->storage_mutex.lock();
 				if (!p_msg->fi.file_path.len)
 					Storage::instance().clearHistory();
 				else
 					Storage::instance().clearHistory(fromByteArray(p_msg->fi.file_path));
+				this->storage_mutex.unlock();
 				send(Command::NONE, FileInfo());
 			}; break;
 			case Command::GETFILESFROMDIR: {
+				this->storage_mutex.lock();
 				auto p_files = Storage::instance().getFilesFromDir(fromByteArray(read().fi.file_path));
+				this->storage_mutex.unlock();
 				for (FileInfo& el : *p_files) {
 					send(Command::CONTINUE, std::move(el));
 				}
 				send(Command::NONE, FileInfo());
 			}; break;
 			case Command::GETALLFILES: {
+				this->storage_mutex.lock();
 				auto p_files = Storage::instance().getAllFiles();
+				this->storage_mutex.unlock();
 				for (FileInfo& fi : *p_files) {
 					send(Command::CONTINUE, std::move(fi));
 				}
 				send(Command::NONE, FileInfo());
 			}; break;
 			case Command::SEARCHBYNAME: {
+				this->storage_mutex.lock();
 				auto p_files = Storage::instance().searchByName(fromByteArray<MAX_BYTE_PATH>(p_msg->fi.file_path));
+				this->storage_mutex.unlock();
 				for (FileInfo& fi : *p_files) {
 					send(Command::CONTINUE, std::move(fi));
 				}
 				send(Command::NONE, FileInfo());
 			}; break;
 			}
-			call_back(status::WORK);
 			std::this_thread::sleep_for(std::chrono::milliseconds(50));
 #ifdef _DEBUG
+			this->storage_mutex.lock();
 			Storage::instance().print();
+			this->storage_mutex.unlock();
 #endif
 		}
-		call_back(status::STOP);
+		global::instance().UpdateStatus(SERVICE_STOP_PENDING);
 	}
 	catch (...) {
 		write(Command::_ERROR_, FileInfo());

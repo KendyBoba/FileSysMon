@@ -9,6 +9,7 @@ enum class MsgType {
 enum class Command {
 	NONE,
 	_ERROR_,
+	_ERROR_BAD_ARG_,
 	CONTINUE,
 	INSERT,
 	INSERTDIR,

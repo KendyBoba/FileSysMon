@@ -94,7 +94,7 @@ bool operator<=(const TM& first, const TM& second)
 
 std::shared_ptr<FileInfo> make_info(const std::wstring& path_to_file)
 {
-	HANDLE file = CreateFileW(
+	HANDLE file = CreateFile(
 		path_to_file.c_str(),
 		GENERIC_ALL,
 		FILE_SHARE_WRITE | FILE_SHARE_READ | FILE_SHARE_DELETE,

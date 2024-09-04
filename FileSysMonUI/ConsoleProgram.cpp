@@ -24,7 +24,7 @@ std::shared_ptr<std::vector<FileInfo>> ConsoleProgram::req(Command command, cons
 		std::cout << "Error: Bad argument" << std::endl;
 		return result;
 	}
-	std::memset(region.get_address(), 0, this->shared_size);
+	std::memset(p_msg, 0, this->shared_size);
 	return result;
 }
 
@@ -230,12 +230,15 @@ void ConsoleProgram::print(const std::vector<FileInfo>& vfi)
 ConsoleProgram::ConsoleProgram()
 {
 	shared_mutex = OpenMutex(MUTEX_ALL_ACCESS, true, shared_mutex_name.c_str());
-	if (shared_mutex == INVALID_HANDLE_VALUE)
+	if (shared_mutex == NULL)
 		throw std::runtime_error("Error mutex create");
 	WaitForSingleObject(shared_mutex,INFINITE);
-	share_obj = boost::interprocess::shared_memory_object(boost::interprocess::open_only, name_of_shared_mem.c_str(), boost::interprocess::read_write);
-	region = boost::interprocess::mapped_region(share_obj, boost::interprocess::read_write);
-	p_msg = (Message*)region.get_address();
+	this->share_obj = OpenFileMapping(FILE_MAP_ALL_ACCESS, false, name_of_shared_mem.c_str());
+	if (share_obj == nullptr)
+		throw std::runtime_error("Failure to open shared object");
+	this->p_msg = (Message*)MapViewOfFile(share_obj, FILE_MAP_ALL_ACCESS, 0, 0, shared_size);
+	if (!p_msg)
+		throw std::runtime_error("Failure to open view object");
 	ReleaseMutex(shared_mutex);
 	functions = std::make_unique<cpmap>();
 	functions->insert(std::make_pair(L"insert", std::bind(&ConsoleProgram::insert, this, std::placeholders::_1)));

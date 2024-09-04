@@ -2,6 +2,8 @@
 //
 
 #include <iostream>
+#include <stdio.h>
+#include <memory.h>
 #include "ConsoleProgram.h"
 #include <Windows.h>
 
@@ -37,11 +39,7 @@ int main()
 		std::cin >> exit;
 		return -1;
 	}
-	LPCWSTR* args = new LPCWSTR[2];
-	args[0] = L"FileSysMon";
-	args[1] = (LPCWSTR)boost::filesystem::current_path().wstring().c_str();
-	std::wstring sdfgsd = args[1];
-	if (!StartService(service, 2, args) && GetLastError() != ERROR_SERVICE_ALREADY_RUNNING) {
+	if (!StartService(service, 0, NULL) && GetLastError() != ERROR_SERVICE_ALREADY_RUNNING) {
 		std::wcout << L"Error: service cannot start\n";
 		std::cin >> exit;
 		return -1;

@@ -13,8 +13,9 @@ CheckDiff::~CheckDiff()
 
 void CheckDiff::init()
 {
-	shared_mutex = CreateMutex(NULL, true, shared_mutex_name.c_str());
-	if(shared_mutex == INVALID_HANDLE_VALUE)
+	SECURITY_ATTRIBUTES sa = this->makeSA();
+	shared_mutex = CreateMutex(&sa, true, shared_mutex_name.c_str());
+	if(shared_mutex == NULL)
 		throw std::runtime_error("eror mutex create");
 	this->dirs = std::make_unique<std::set<std::wstring>>();
 	auto p_all_dir = Storage::instance().getAllDir();
@@ -93,6 +94,36 @@ void CheckDiff::procChange(std::shared_ptr<FileInfo> fi)
 	writeLog(fi);
 }
 
+SECURITY_ATTRIBUTES CheckDiff::makeSA() const
+{
+	SECURITY_ATTRIBUTES result{0};
+	PSID users = nullptr;
+	SID_IDENTIFIER_AUTHORITY authWorld = SECURITY_WORLD_SID_AUTHORITY;
+	if (!AllocateAndInitializeSid(&authWorld,1,SECURITY_WORLD_RID,0,0,0,0,0,0,0,&users))
+		throw std::runtime_error("Attribute creation error (sid)");
+	EXPLICIT_ACCESS ea[1];
+	ZeroMemory(&ea, sizeof(ea));
+	ea[0].grfAccessMode = SET_ACCESS;
+	ea[0].grfAccessPermissions = KEY_ALL_ACCESS;
+	ea[0].grfInheritance = NO_INHERITANCE;
+	ea[0].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+	ea[0].Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+	ea[0].Trustee.ptstrName = (LPWCH)users;
+	PACL acl = nullptr;
+	if(SetEntriesInAcl(1, ea, nullptr, &acl) != ERROR_SUCCESS)
+		throw std::runtime_error("Attribute creation error (acl)");
+	PSECURITY_DESCRIPTOR psd = (PSECURITY_DESCRIPTOR*)LocalAlloc(LPTR,SECURITY_DESCRIPTOR_MIN_LENGTH);
+	if(!psd)
+		throw std::runtime_error("Attribute creation error (psd)");
+	InitializeSecurityDescriptor(psd, SECURITY_DESCRIPTOR_REVISION);
+	if(!SetSecurityDescriptorDacl(psd,true,acl,false))
+		throw std::runtime_error("Attribute creation error (set psd)");
+	result.nLength = sizeof(SECURITY_ATTRIBUTES);
+	result.lpSecurityDescriptor = psd;
+	result.bInheritHandle = false;
+	return result;
+}
+
 void CheckDiff::slotAdd(const std::wstring& dir_path)
 {
 	if (dirs->count(dir_path))
@@ -142,12 +173,15 @@ void CheckDiff::writeLog(std::shared_ptr<FileInfo> fi)
 
 void CheckDiff::exec()
 {
-	boost::interprocess::shared_memory_object share_obj(boost::interprocess::open_or_create, shared_memory_name.c_str(), boost::interprocess::read_write);
-	share_obj.truncate(shared_size);
-	boost::interprocess::mapped_region region(share_obj, boost::interprocess::read_write);
-	std::memset(region.get_address(), 0, region.get_size());
+	SECURITY_ATTRIBUTES sec_attr = this->makeSA();
+	HANDLE share_obj = CreateFileMapping(NULL, &sec_attr, PAGE_READWRITE,0, shared_size, shared_memory_name.c_str());
+	if (share_obj == nullptr)
+		throw std::runtime_error("Failure to open shared object");
+	Message* p_msg = (Message*)MapViewOfFile(share_obj, FILE_MAP_ALL_ACCESS, 0, 0, shared_size);
+	if(!p_msg)
+		throw std::runtime_error("Failure to open view object");
+	std::memset(p_msg, 0, this->shared_size);
 	ReleaseMutex(shared_mutex);
-	Message* p_msg = (Message*)region.get_address();
 	auto write = [&](Command command,FileInfo&& fi)->void {
 		WaitForSingleObject(shared_mutex, INFINITE);
 		p_msg->type = MsgType::RESPONSE;
@@ -166,13 +200,16 @@ void CheckDiff::exec()
 		write(command, std::move(fi));
 	};
 	try {
+		Message msg;
 		while (global::instance().is_work) {
+			msg = read();
+			*error_log << (int)msg.command << std::endl; error_log->flush();
 			global::instance().UpdateStatus(SERVICE_RUNNING);
 			while (global::instance().is_pause) { std::this_thread::sleep_for(std::chrono::milliseconds(200)); };
-			switch (p_msg->command)
+			switch (msg.command)
 			{
 			case Command::INSERT: {
-				auto pfi = make_info(fromByteArray(p_msg->fi.file_path));
+				auto pfi = make_info(fromByteArray(msg.fi.file_path));
 				if(!pfi)
 					send(Command::_ERROR_BAD_ARG_, FileInfo());
 				this->storage_mutex.lock();
@@ -182,19 +219,19 @@ void CheckDiff::exec()
 			}; break;
 			case Command::INSERTDIR: {
 				this->storage_mutex.lock();
-				Storage::instance().insert(fromByteArray(p_msg->fi.file_path));
+				Storage::instance().insert(fromByteArray(msg.fi.file_path));
 				this->storage_mutex.unlock();
 				send(Command::NONE, FileInfo());
 			}; break;
 			case Command::REMOVE: {
 				this->storage_mutex.lock();
-				Storage::instance().remove(fromByteArray(p_msg->fi.file_path));
+				Storage::instance().remove(fromByteArray(msg.fi.file_path));
 				this->storage_mutex.unlock();
 				send(Command::NONE, FileInfo());
 			}; break;
 			case Command::HISTORY: {
 				this->storage_mutex.lock();
-				auto list_of_history = Storage::instance().getHistory(fromByteArray<MAX_BYTE_PATH>(p_msg->fi.file_path));
+				auto list_of_history = Storage::instance().getHistory(fromByteArray<MAX_BYTE_PATH>(msg.fi.file_path));
 				this->storage_mutex.unlock();
 				for (auto& el : *list_of_history) {
 					send(Command::CONTINUE, std::move(el));
@@ -203,7 +240,7 @@ void CheckDiff::exec()
 			}; break;
 			case Command::SEARCH: {
 				this->storage_mutex.lock();
-				auto pFi = Storage::instance().searchByPath(fromByteArray(p_msg->fi.file_path));
+				auto pFi = Storage::instance().searchByPath(fromByteArray(msg.fi.file_path));
 				this->storage_mutex.unlock();
 				if (pFi)
 					send(Command::NONE, std::move(*pFi));
@@ -212,16 +249,16 @@ void CheckDiff::exec()
 			}; break;
 			case Command::CLEARHISTORY: {
 				this->storage_mutex.lock();
-				if (!p_msg->fi.file_path.len)
+				if (!msg.fi.file_path.len)
 					Storage::instance().clearHistory();
 				else
-					Storage::instance().clearHistory(fromByteArray(p_msg->fi.file_path));
+					Storage::instance().clearHistory(fromByteArray(msg.fi.file_path));
 				this->storage_mutex.unlock();
 				send(Command::NONE, FileInfo());
 			}; break;
 			case Command::GETFILESFROMDIR: {
 				this->storage_mutex.lock();
-				auto p_files = Storage::instance().getFilesFromDir(fromByteArray(read().fi.file_path));
+				auto p_files = Storage::instance().getFilesFromDir(fromByteArray(msg.fi.file_path));
 				this->storage_mutex.unlock();
 				for (FileInfo& el : *p_files) {
 					send(Command::CONTINUE, std::move(el));
@@ -239,7 +276,7 @@ void CheckDiff::exec()
 			}; break;
 			case Command::SEARCHBYNAME: {
 				this->storage_mutex.lock();
-				auto p_files = Storage::instance().searchByName(fromByteArray<MAX_BYTE_PATH>(p_msg->fi.file_path));
+				auto p_files = Storage::instance().searchByName(fromByteArray<MAX_BYTE_PATH>(msg.fi.file_path));
 				this->storage_mutex.unlock();
 				for (FileInfo& fi : *p_files) {
 					send(Command::CONTINUE, std::move(fi));
@@ -247,7 +284,7 @@ void CheckDiff::exec()
 				send(Command::NONE, FileInfo());
 			}; break;
 			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 #ifdef _DEBUG
 			this->storage_mutex.lock();
 			Storage::instance().print();
@@ -257,7 +294,11 @@ void CheckDiff::exec()
 		global::instance().UpdateStatus(SERVICE_STOP_PENDING);
 	}
 	catch (...) {
+		UnmapViewOfFile(p_msg);
+		CloseHandle(share_obj);
 		write(Command::_ERROR_, FileInfo());
 		throw;
 	}
+	UnmapViewOfFile(p_msg);
+	CloseHandle(share_obj);
 }

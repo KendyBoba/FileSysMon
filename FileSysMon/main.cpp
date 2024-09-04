@@ -16,8 +16,11 @@ void WINAPI serviceCtrlHandlerProc(DWORD ctrl,DWORD event_type,void* event_data,
 }
 #endif
 
-int startService(const std::wstring& current_dir_path = L"D:") {
-	SetCurrentDirectory(current_dir_path.c_str());
+int startService() {
+	const boost::filesystem::path prog_data = L"C:\\ProgramData";
+	const boost::filesystem::path prog_data_fsm = prog_data / L"FileSysMon";
+	boost::filesystem::create_directory(prog_data_fsm);
+	SetCurrentDirectory(prog_data_fsm.wstring().c_str());
 	boost::filesystem::create_directory(boost::filesystem::current_path() / L"logs");
 	boost::filesystem::path error_path = boost::filesystem::current_path() / L"logs\\error.log";
 	boost::filesystem::path change_path = boost::filesystem::current_path() / L"logs\\change.log";
@@ -26,6 +29,7 @@ int startService(const std::wstring& current_dir_path = L"D:") {
 	open_object.open(change_path.wstring());
 	open_object.close();
 	auto error_log = std::make_shared<std::fstream>(error_path.wstring(), std::fstream::in | std::fstream::out | std::fstream::app);
+	error_log->flush();
 	auto change_log = std::make_shared<std::fstream>(change_path.wstring(), std::fstream::in | std::fstream::out | std::fstream::app);
 	bool use_log = error_log->is_open() && change_log->is_open();
 	try {
@@ -78,7 +82,7 @@ void WINAPI serviceMain(DWORD argc,LPWSTR argv[]) {
 	global::instance().hServiceStatus.dwWaitHint = global::instance().ACCWAIT;
 	global::instance().hStat = RegisterServiceCtrlHandlerEx(global::instance().service_name, (LPHANDLER_FUNCTION_EX)serviceCtrlHandlerProc,nullptr);
 	SetServiceStatus(global::instance().hStat, &global::instance().hServiceStatus);
-	if (!startService(argv[1])) {
+	if (!startService()) {
 		global::instance().UpdateStatus(SERVICE_STOPPED);
 		global::instance().hServiceStatus.dwServiceSpecificExitCode = -1;
 		SetServiceStatus(global::instance().hStat, &global::instance().hServiceStatus);
@@ -98,6 +102,6 @@ int main() {
 	StartServiceCtrlDispatcher(dispatcher_table);
 	return 0;
 #endif
-	startService(boost::filesystem::current_path().wstring());
+	startService();
 	return 0;
 }

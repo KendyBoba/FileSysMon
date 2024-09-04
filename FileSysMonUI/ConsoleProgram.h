@@ -17,12 +17,11 @@ private:
 	using userInput = std::map<std::wstring, std::wstring>;
 	HANDLE shar_mutex = NULL;
 	using cpmap = std::map<std::wstring, std::function<void(const std::map<std::wstring, std::wstring>&)>>;
-	const std::string name_of_shared_mem = "FileSysMonShareMem";
+	const std::wstring name_of_shared_mem = L"FileSysMonShareMem";
 	std::unique_ptr<cpmap> functions = nullptr;
 	const std::wstring shared_mutex_name = L"FileSysMonMutex";
 	HANDLE shared_mutex = NULL;
-	boost::interprocess::shared_memory_object share_obj;
-	boost::interprocess::mapped_region region;
+	HANDLE share_obj;
 	const unsigned short shared_size = 2048;
 	Message* p_msg = nullptr;
 private:

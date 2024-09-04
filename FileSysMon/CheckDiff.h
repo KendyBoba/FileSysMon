@@ -3,6 +3,7 @@
 #include <vector>
 #include <thread>
 #include <chrono>
+#include <aclapi.h>
 #include "Storage.h"
 #include "Message.h"
 #include <set>
@@ -17,7 +18,7 @@ namespace json = boost::json;
 class CheckDiff {
 private:
 	std::unique_ptr<std::set<std::wstring>> dirs = nullptr;
-	const std::string shared_memory_name = "FileSysMonShareMem";
+	const std::wstring shared_memory_name = L"FileSysMonShareMem";
 	const std::wstring shared_mutex_name = L"FileSysMonMutex";
 	HANDLE shared_mutex = NULL;
 	const unsigned short shared_size = 2048;
@@ -29,11 +30,13 @@ public:
 	CheckDiff();
 	~CheckDiff();
 	void init();
-	void readChanges(const boost::filesystem::path& path);
-	void procChange(std::shared_ptr<FileInfo> fi);
 	void slotAdd(const std::wstring& dir_path);
 	void slotRemove(const std::wstring& dir_path);
 	void setLog(std::shared_ptr<std::fstream> error_log, std::shared_ptr<std::fstream> change_log);
 	void writeLog(std::shared_ptr<FileInfo> fi);
 	void exec();
+private:
+	void readChanges(const boost::filesystem::path& path);
+	void procChange(std::shared_ptr<FileInfo> fi);
+	SECURITY_ATTRIBUTES makeSA()const;
 };

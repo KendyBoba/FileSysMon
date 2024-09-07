@@ -52,6 +52,19 @@ FileInfo& FileInfo::operator=(const FileInfo& fi)
 	return *this;
 }
 
+std::wstring FileInfo::changeToStr(const Changes& change)
+{
+	switch (change)
+	{
+	case Changes::ADDED: return L"ADD"; break;
+	case Changes::REMOVED: return L"REMOVE"; break;
+	case Changes::MODIFIED: return L"MODIFY"; break;
+	case Changes::RENAMED_OLD:
+	case Changes::RENAMED_NEW: return L"RENAME"; break;
+	}
+	return L"NONE";
+}
+
 bool operator==(const TM& first, const TM& second)
 {
 	return (first.tm_year == second.tm_year && first.tm_mon == second.tm_mon
@@ -151,10 +164,15 @@ tm systemTimeToTm(const SYSTEMTIME& sysTime) {
 	return res;
 }
 
-std::string toUTF8(const std::wstring src)
+std::string toUTF8(const std::wstring& src)
 {
 	std::wstring_convert< std::codecvt_utf8<wchar_t>> converter;
 	return converter.to_bytes(src);
+}
+
+std::wstring fromUTF8(const std::string& src) {
+	std::wstring_convert< std::codecvt_utf8<wchar_t>> converter;
+	return converter.from_bytes(src);
 }
 
 TM::operator tm()

@@ -4,6 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <aclapi.h>
+#include <sddl.h>
 #include "Storage.h"
 #include "Message.h"
 #include <set>
@@ -26,7 +27,7 @@ private:
 	std::shared_ptr<std::fstream> error_log = nullptr;
 	std::shared_ptr<std::fstream> change_log = nullptr;
 	bool use_log = false;
-	SECURITY_ATTRIBUTES sec_attr;
+	SECURITY_ATTRIBUTES app_sa;
 public:
 	CheckDiff();
 	~CheckDiff();

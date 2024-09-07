@@ -13,10 +13,10 @@ CheckDiff::~CheckDiff()
 
 void CheckDiff::init()
 {
-	this->sec_attr = makeSA();
-	shared_mutex = CreateMutex(NULL, true, shared_mutex_name.c_str());
+	app_sa = makeSA();
+	shared_mutex = CreateMutex(&app_sa, true, shared_mutex_name.c_str());
 	if(shared_mutex == NULL)
-		throw std::runtime_error("eror mutex create");
+		throw std::runtime_error("Error mutex create");
 	this->dirs = std::make_unique<std::set<std::wstring>>();
 	auto p_all_dir = Storage::instance().getAllDir();
 	for (const std::wstring& path_to_dir : *p_all_dir) {
@@ -96,37 +96,17 @@ void CheckDiff::procChange(std::shared_ptr<FileInfo> fi)
 
 SECURITY_ATTRIBUTES CheckDiff::makeSA() const
 {
-	SECURITY_ATTRIBUTES result{0};
-	PSID users = nullptr, admins = nullptr;
-	SID_IDENTIFIER_AUTHORITY authAdmin = SECURITY_NT_AUTHORITY;
-	SID_IDENTIFIER_AUTHORITY authWorld = SECURITY_WORLD_SID_AUTHORITY;
-	if (!AllocateAndInitializeSid(&authAdmin,2,SECURITY_BUILTIN_DOMAIN_RID,DOMAIN_ALIAS_RID_ADMINS,0,0,0,0,0,0,&admins))
-		throw std::runtime_error("Attribute creation error (sid)");
-	if (!AllocateAndInitializeSid(&authWorld, 1, SECURITY_WORLD_RID,0, 0, 0, 0, 0, 0, 0, &users))
-		throw std::runtime_error("Attribute creation error (sid)");
-	EXPLICIT_ACCESS ea[2];
-	ZeroMemory(&ea, sizeof(ea));
-	ea[0].grfAccessMode = SET_ACCESS;
-	ea[0].grfAccessPermissions = KEY_ALL_ACCESS;
-	ea[0].grfInheritance = INHERIT_ONLY;
-	ea[0].Trustee.TrusteeForm = TRUSTEE_IS_SID;
-	ea[0].Trustee.TrusteeType = TRUSTEE_IS_GROUP;
-	ea[0].Trustee.ptstrName = (LPWCH)users;
-	ea[1] = ea[0];
-	ea[1].Trustee.ptstrName = (LPWCH)admins;
-	PACL acl = nullptr;
-	if(SetEntriesInAcl(2, ea, nullptr, &acl) != ERROR_SUCCESS)
-		throw std::runtime_error("Attribute creation error (acl)");
-	PSECURITY_DESCRIPTOR psd = (PSECURITY_DESCRIPTOR*)LocalAlloc(LPTR,SECURITY_DESCRIPTOR_MIN_LENGTH);
-	if(!psd)
-		throw std::runtime_error("Attribute creation error (psd)");
-	InitializeSecurityDescriptor(psd, SECURITY_DESCRIPTOR_REVISION);
-	if(!SetSecurityDescriptorDacl(psd,true,acl,false))
-		throw std::runtime_error("Attribute creation error (set psd)");
-	result.nLength = sizeof(SECURITY_ATTRIBUTES);
-	result.lpSecurityDescriptor = psd;
-	result.bInheritHandle = false;
-	return result;
+	PSECURITY_DESCRIPTOR psd = nullptr;
+	unsigned long psd_size = 0;
+	static const std::wstring SecDesDefLang_rule = L"D:(A;;GAFAKARCWDSDRPWOCCSWCR;;;BA)";
+	ConvertStringSecurityDescriptorToSecurityDescriptorW(SecDesDefLang_rule.c_str(), SDDL_REVISION_1, &psd, &psd_size);
+	if (!psd_size)
+		throw std::runtime_error("Error create security attribnute");
+	SECURITY_ATTRIBUTES sa;
+	sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+	sa.lpSecurityDescriptor = psd;
+	sa.bInheritHandle = true;
+	return sa;
 }
 
 void CheckDiff::slotAdd(const std::wstring& dir_path)
@@ -178,7 +158,7 @@ void CheckDiff::writeLog(std::shared_ptr<FileInfo> fi)
 
 void CheckDiff::exec()
 {
-	HANDLE share_obj = CreateFileMapping(NULL, NULL, PAGE_READWRITE,0, shared_size, shared_memory_name.c_str());
+	HANDLE share_obj = CreateFileMappingW(INVALID_HANDLE_VALUE, &this->app_sa, PAGE_READWRITE,0, shared_size, shared_memory_name.c_str());
 	if (share_obj == nullptr)
 		throw std::runtime_error("Failure to open shared object");
 	Message* p_msg = (Message*)MapViewOfFile(share_obj, FILE_MAP_ALL_ACCESS, 0, 0, shared_size);

@@ -92,7 +92,7 @@
       <AdditionalIncludeDirectories>..\..\boost_debug\include\boost-1_85</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>..\..\boost_debug\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>libboost_filesystem-vc143-mt-sgd-x32-1_85.lib;%(AdditionalDependencies)</AdditionalDependencies>

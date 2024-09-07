@@ -1,9 +1,7 @@
 #include <iostream>
 #include "CheckDiff.h"
 #include <boost/json/src.hpp>
-//#define _SERVICE
 
-#ifdef _SERVICE
 void WINAPI serviceCtrlHandlerProc(DWORD ctrl,DWORD event_type,void* event_data,void* context) {
 	switch (ctrl)
 	{
@@ -15,7 +13,6 @@ void WINAPI serviceCtrlHandlerProc(DWORD ctrl,DWORD event_type,void* event_data,
 	}
 	++global::instance().hServiceStatus.dwCheckPoint;
 }
-#endif
 
 int startService() {
 	const boost::filesystem::path prog_data = L"C:\\ProgramData";
@@ -72,7 +69,6 @@ int startService() {
 	return 0;
 }
 
-#ifdef _SERVICE
 void WINAPI serviceMain(DWORD argc,LPWSTR argv[]) {
 	global::instance().hServiceStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
 	global::instance().hServiceStatus.dwCurrentState = SERVICE_START_PENDING;
@@ -92,22 +88,15 @@ void WINAPI serviceMain(DWORD argc,LPWSTR argv[]) {
 	global::instance().UpdateStatus(SERVICE_STOPPED);
 }
 
-#endif
-
-
-#ifdef _SERVICE
-int main() {
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
+#ifdef DEBUG
+	startService();
+#else
 	SERVICE_TABLE_ENTRY dispatcher_table[]{
 		{global::instance().service_name, serviceMain },
 		{ NULL,NULL }
 	};
 	StartServiceCtrlDispatcher(dispatcher_table);
-	return 0;
-
-}
-#else
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
-	startService();
-	return 0;
-}
 #endif
+	return 0;
+}

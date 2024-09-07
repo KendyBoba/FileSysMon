@@ -65,6 +65,7 @@ public:
 	FileInfo(const std::wstring& path, const BY_HANDLE_FILE_INFORMATION& file_info, Changes changes);
 	FileInfo(const FileInfo& fi);
 	FileInfo& operator=(const FileInfo& fi);
+	static std::wstring changeToStr(const Changes& change);
 };
 
 std::shared_ptr<FileInfo> make_info(const std::wstring& path_to_file);
@@ -95,4 +96,5 @@ tm strToTime(std::wstring str);
 tm strToTime(std::string str);
 std::wstring timeToStr(tm time);
 tm systemTimeToTm(const SYSTEMTIME& sysTime);
-std::string toUTF8(const std::wstring src);
+std::string toUTF8(const std::wstring& src);
+std::wstring fromUTF8(const std::string& src);

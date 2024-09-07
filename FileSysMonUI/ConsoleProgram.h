@@ -12,14 +12,15 @@
 #include <boost/interprocess/sync/named_mutex.hpp>
 #include <boost/interprocess/sync/scoped_lock.hpp>
 #include <boost/algorithm/string.hpp>
+
 class ConsoleProgram {
 private:
 	using userInput = std::map<std::wstring, std::wstring>;
 	HANDLE shar_mutex = NULL;
 	using cpmap = std::map<std::wstring, std::function<void(const std::map<std::wstring, std::wstring>&)>>;
-	const std::wstring name_of_shared_mem = L"FileSysMonShareMem";
+	const std::wstring name_of_shared_mem = L"Global\\FileSysMonShareMem";
 	std::unique_ptr<cpmap> functions = nullptr;
-	const std::wstring shared_mutex_name = L"FileSysMonMutex";
+	const std::wstring shared_mutex_name = L"Global\\FileSysMonMutex";
 	HANDLE shared_mutex = NULL;
 	HANDLE share_obj;
 	const unsigned short shared_size = 2048;
@@ -38,6 +39,8 @@ private:
 public:
 	static void print(const FileInfo& fi);
 	static void print(const std::vector<FileInfo>& vfi);
+	void parse(std::wstring& command_line);
+	static std::wstring convert(const std::string& str);
 public:
 	ConsoleProgram();
 	void exec();
